@@ -25,7 +25,6 @@ extern unsigned char speed;
 extern unsigned char pitch;
 extern int singmode;
 
-
 extern unsigned char phonemeIndexOutput[60]; //tab47296
 extern unsigned char stressOutput[60]; //tab47365
 extern unsigned char phonemeLengthOutput[60]; //tab47416
@@ -42,16 +41,44 @@ unsigned char amplitude3[256];
 
 unsigned char sampledConsonantFlag[256]; // tab44800
 
+// Many interesting features!
+const unsigned char phase_corr = 0;
+const signed char* formants[3] = {NULL};
+static const signed char* noise_formant = (const signed char*)sampleTable;
+unsigned int nform_pos[3] = {0, 256, 512}, nform_phase[3] = {0};
+
+const signed char* shapes[] = {
+    none, sine, triangle, sawtooth, square, rect25, rect125,
+    nes_tri, vrc6_saw, half_sine, (const signed char*)sampleTable
+};
+
+void SetFormants(unsigned char f1, unsigned char f2, unsigned char f3) {
+    formants[0] = shapes[f1];
+    formants[1] = shapes[f2];
+    formants[2] = shapes[f3];
+}
+
+signed char GetFormant(unsigned char form, unsigned int phase, unsigned int freq) {
+    if (formants[form] != noise_formant) {
+        //printf("%d, ", formants[form][((phase_corr ? (phase & 0xFF00) / (freq + 16) : phase) >> 8) & 0xFF]); /////
+        return formants[form][((phase_corr ? (phase & 0xFF00) / (freq + 16) : phase) >> 8) & 0xFF];
+    }
+    
+    phase >>= 14;
+    if (phase != nform_phase[form]) {
+        nform_phase[form] = phase;
+        nform_pos[form] = (nform_pos[form] + 1) % 0x500;
+    }
+    
+    return noise_formant[nform_pos[form]];
+}
 
 void AddInflection(unsigned char mem48, unsigned char phase1);
 unsigned char trans(unsigned char mem39212, unsigned char mem39213);
 
-
 // contains the final soundbuffer
 extern int bufferpos;
 extern char *buffer;
-
-
 
 //timetable for more accurate c64 simulation
 int timetable[5][5] =
@@ -78,13 +105,6 @@ void Output8Bit(int index, unsigned char A)
     unsigned char ary[5] = {A,A,A,A,A};
     Output8BitAry(index, ary);
 }
-
-
-
-
-
-
-
 
 //written by me because of different table positions.
 // mem[47] = ...
@@ -819,9 +839,9 @@ if (debug)
             unsigned int p3 = phase3 * 256;
             int k;
             for (k=0; k<5; k++) {
-                signed char sp1 = (signed char)sinus[0xff & (p1>>8)];
-                signed char sp2 = (signed char)sinus[0xff & (p2>>8)];
-                signed char rp3 = (signed char)rectangle[0xff & (p3>>8)];
+                signed char sp1 = GetFormant(0, p1, frequency1[Y]);
+                signed char sp2 = GetFormant(1, p2, frequency2[Y]);
+                signed char rp3 = GetFormant(2, p3, frequency3[Y]);
                 signed int sin1 = sp1 * ((unsigned char)amplitude1[Y] & 0x0f);
                 signed int sin2 = sp2 * ((unsigned char)amplitude2[Y] & 0x0f);
                 signed int rect = rp3 * ((unsigned char)amplitude3[Y] & 0x0f);

@@ -5,12 +5,55 @@
 
 #include "reciter.h"
 #include "sam.h"
+#include "render.h"
 #include "debug.h"
 
 #ifdef USESDL
 #include <SDL.h>
 #include <SDL_audio.h>
 #endif
+
+unsigned char ParseFormants(char* str) {
+    char* buf = strdup(str);
+    if (!buf) return 0;
+    
+    char* tok = strtok(buf, ",");
+    unsigned char form[3];
+    unsigned char counter = 0;
+        
+    while (tok != NULL) {
+        if      (!strcmp(tok, "none"))      form[counter] = 0;
+        else if (!strcmp(tok, "sine"))      form[counter] = 1;
+        else if (!strcmp(tok, "triangle"))  form[counter] = 2;
+        else if (!strcmp(tok, "sawtooth"))  form[counter] = 3;
+        else if (!strcmp(tok, "square"))    form[counter] = 4;
+        else if (!strcmp(tok, "rect25"))    form[counter] = 5;
+        else if (!strcmp(tok, "rect125"))   form[counter] = 6;
+        else if (!strcmp(tok, "nes_tri"))   form[counter] = 7;
+        else if (!strcmp(tok, "vrc6_saw"))  form[counter] = 8;
+        else if (!strcmp(tok, "half_sine")) form[counter] = 9;
+        else if (!strcmp(tok, "noise"))     form[counter] = 10;
+        else {
+            free(buf);
+            return 0;
+        }
+        
+        counter += 1;
+        tok = strtok(NULL, ",");
+    }
+    
+    free(buf);
+    switch (counter) {
+        case 1: form[1] = form[0];
+        case 2: form[2] = form[1]; break;
+        case 3: break;
+        default: return 0;
+    }
+    
+    SetFormants(form[0], form[1], form[2]);
+    return 1;
+}
+
 
 void WriteWav(char* filename, char* buffer, int bufferlength)
 {
@@ -48,18 +91,20 @@ void WriteWav(char* filename, char* buffer, int bufferlength)
 
 void PrintUsage()
 {
-    printf("usage: sam [options] Word1 Word2 ....\n");
+    printf("usage: sam [options] [Word1 Word2 ....]\n");
     printf("options\n");
-    printf("    -phonetic         enters phonetic mode. (see below)\n");
-    printf("    -pitch number        set pitch value (default=64)\n");
-    printf("    -speed number        set speed value (default=72)\n");
-    printf("    -throat number        set throat value (default=128)\n");
-    printf("    -mouth number        set mouth value (default=128)\n");
-    printf("    -wav filename        output to wav instead of libsdl\n");
-    printf("    -sing            special treatment of pitch\n");
-    printf("    -debug            print additional debug messages\n");
+    printf("    -phonetic               enters phonetic mode. (see below)\n");
+    printf("    -sing                   special treatment of pitch\n");
+    printf("    -pitch number           set pitch value (default=64)\n");
+    printf("    -speed number           set speed value (default=72)\n");
+    printf("    -throat number          set throat value (default=128)\n");
+    printf("    -mouth number           set mouth value (default=128)\n");
+    printf("    -formant waveform(s)    set formant(s) shape (default=sine,sine,square)\n");
+    printf("    -wav filename           output to wav instead of libsdl\n");
+    printf("    -pipe                   output to stdout instead of libsdl\n");
+    printf("    -debug                  print additional debug messages\n");
+    printf("NOTE: If no words are present, stdin is used\n");
     printf("\n");
-
 
     printf("     VOWELS                            VOICED CONSONANTS    \n");
     printf("IY           f(ee)t                    R        red        \n");
@@ -90,6 +135,18 @@ void PrintUsage()
     printf("UM           astron(omy) (=AXM)        K         cake        \n");
     printf("UN           functi(on) (=AXN)         CH        speech        \n");
     printf("Q            kitt-en (glottal stop)    /H        a(h)ead    \n");
+    printf("\n");
+    printf(" SUPPORTED FORMANT SHAPES\n");
+    printf("sine        Sine wave\n");
+    printf("triangle    Triangle wave\n");
+    printf("sawtooth    Sawtooth wave\n");
+    printf("square      50%% width square wave\n");
+    printf("rect25      25%% width square wave\n");
+    printf("rect125     12.5%% width square wave\n");
+    printf("nes_tri     NES triangle wave\n");
+    printf("vrc6_saw    VRC6 sawtooth wave\n");
+    printf("half_sine   abs(sin()) wave\n");
+    printf("noise       (not implemented yet!)\n");
 }
 
 #ifdef USESDL
@@ -102,13 +159,13 @@ void MixAudio(void *unused, Uint8 *stream, int len)
     int i;
     if (pos >= bufferpos) return;
     if ((bufferpos-pos) < len) len = (bufferpos-pos);
+    
     for(i=0; i<len; i++)
     {
         stream[i] = buffer[pos];
         pos++;
     }
 }
-
 
 void OutputSound()
 {
@@ -148,7 +205,7 @@ void OutputSound() {}
 
 int debug = 0;
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     int i;
     int phonetic = 0;
@@ -163,7 +220,9 @@ int main(int argc, char **argv)
         PrintUsage();
         return 1;
     }
-
+    
+    SetFormants(1, 1, 4); // Default
+    
     i = 1;
     while(i < argc)
     {
@@ -203,6 +262,12 @@ int main(int argc, char **argv)
             if (strcmp(&argv[i][1], "mouth")==0)
             {
                 SetMouth(atoi(argv[i+1]));
+                i++;
+            } else
+            if (strcmp(&argv[i][1], "formant")==0)
+            {
+                if (!ParseFormants(argv[i+1]))
+                    printf("Unable to parse formants; using default values");
                 i++;
             } else
             if (strcmp(&argv[i][1], "throat")==0)
